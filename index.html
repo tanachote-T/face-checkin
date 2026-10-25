@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Face Attendance - ระบบสแกนใบหน้าเช็คชื่อนักเรียน</title>
+  <!-- นำเข้าฟอนต์ Prompt เพื่อความทันสมัย และไลบรารี AI (face-api.js) -->
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Prompt', sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 0;
+    }
+    /* แถบหัวข้อด้านบนแบบไล่เฉดสีทันสมัย */
+    .navbar {
+      background: linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%);
+      color: white;
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .navbar h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .navbar-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    /* โครงสร้างหลักแบบ 2 คอลัมน์ */
+    .main-layout {
+      max-width: 1280px;
+      margin: 24px auto;
+      padding: 0 20px;
+      display: grid;
+      grid-template-columns: 680px 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 1100px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 17px;
+      font-weight: 600;
+      margin-top: 0;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #1e293b;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 10px;
+    }
+    /* ปุ่มและช่องกรอกข้อมูล */
+    input[type="text"], select {
+      font-family: 'Prompt', sans-serif;
+      font-size: 14px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      width: 100%;
+      outline: none;
+      transition: border 0.2s;
+    }
+    input[type="text"]:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+    button {
+      font-family: 'Prompt', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-warning { background: var(--warning); color: white; }
+    .btn-outline { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); }
+    .btn-outline:hover { background: rgba(255,255,255,0.25); }
+    button:disabled { background: #cbd5e1 !important; color: #64748b !important; cursor: not-allowed; }
+
+    /* แถบแจ้งสถานะ */
+    .status-banner {
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-weight: 500;
+      font-size: 15px;
+      margin-bottom: 16px;
+      background: #eef2ff;
+      color: #3730a3;
+      border-left: 5px solid var(--primary);
+    }
+    .error-banner {
+      display: none;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      background: #fef2f2;
+      color: #991b1b;
+      border-left: 5px solid var(--danger);
+      line-height: 1.5;
+    }
+
+    /* กรอบกล้องเว็บแคม */
+    .video-container {
+      position: relative;
+      width: 640px;
+      height: 480px;
+      margin: 0 auto;
+      background: #0f172a;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+    }
+    /* กลับด้านภาพกล้องซ้าย-ขวาให้เหมือนส่องกระจกจริง */
+    video.mirrored {
+      transform: scaleX(-1);
+    }
+    canvas#overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    /* กล่องลงทะเบียนด่วน (ค้นหาจากรหัสนักเรียน) */
+    .register-card {
+      display: none;
+      border: 2px solid var(--warning);
+      background: #fffbeb;
+    }
+    .student-preview-box {
+      background: white;
+      border: 1px solid #fde68a;
+      border-radius: 10px;
+      padding: 12px;
+      margin: 12px 0;
+      text-align: left;
+    }
+    .preview-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    /* รายการประวัติการเช็คชื่อ */
+    .log-list {
+      max-height: 360px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .log-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: #f8fafc;
+      border-radius: 10px;
+      border-left: 4px solid var(--success);
+      font-size: 14px;
+    }
+    .log-time {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--success);
+      background: #d1fae5;
+      padding: 3px 8px;
+      border-radius: 20px;
+    }
+    .count-badge {
+      background: #e0e7ff;
+      color: var(--primary);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- แถบด้านบน -->
+  <div class="navbar">
+    <h1>ระบบสแกนใบหน้าเช็คชื่อนักเรียน (Smart Face Attendance)</h1>
+    <div class="navbar-actions">
+      <button class="btn-warning" onclick="unlockRegisterPanel()">+ โหมดลงทะเบียนถ่ายรูป (PIN)</button>
+      <button class="btn-outline" onclick="promptApiUrl()">ตั้งค่าลิงก์เชื่อมต่อ</button>
+    </div>
+  </div>
+
+  <!-- โครงสร้างหลัก 2 ฝั่ง -->
+  <div class="main-layout">
+
+    <!-- ฝั่งซ้าย: จอแสดงภาพกล้องเว็บแคม -->
+    <div>
+      <div class="card">
+        <div class="card-title">
+          <span>หน้าจอกล้องสแกนใบหน้า</span>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <select id="cameraSelect" onchange="startWebcam()" style="width:auto; padding:6px 10px;">
+              <option value="">-- กล้องเริ่มต้น --</option>
+            </select>
+            <button class="btn-success" onclick="startWebcam()" style="padding:6px 12px; font-size:13px;">รีเซ็ตกล้อง</button>
+          </div>
+        </div>
+
+        <div id="statusBanner" class="status-banner">กำลังเปิดกล้องและเตรียมระบบ AI กรุณารอสักครู่...</div>
+        <div id="errorBanner" class="error-banner"></div>
+
+        <div class="video-container">
+          <video id="video" class="mirrored" width="640" height="480" autoplay muted playsinline></video>
+          <canvas id="overlay" width="640" height="480"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ฝั่งขวา: แผงควบคุมห้องเรียน โหมดลงทะเบียนด่วน และประวัติการเช็คชื่อ -->
+    <div>
+
+      <!-- กล่องที่ 1: โหมดลงทะเบียนนักเรียนแบบด่วน (ค้นหาจากคอลัมน์ A) -->
+      <div id="registerCard" class="card register-card">
+        <div class="card-title" style="color:#b45309; border-color:#fde68a;">
+          <span>ลงทะเบียนถ่ายรูปนักเรียน (ดึงข้อมูลจากชีท Students)</span>
+          <button onclick="closeRegisterPanel()" style="background:#64748b; color:white; padding:4px 10px; font-size:12px;">ปิด</button>
+        </div>
+
+        <label style="font-size:13px; font-weight:600; display:block; margin-bottom:6px;">
+          1. กรอกรหัสนักเรียน (คอลัมน์ A) แล้วกดค้นหา:
+        </label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="regIdInput" placeholder="พิมพ์รหัสนักเรียน เช่น 1001" onkeydown="if(event.key==='Enter') lookupStudentId()">
+          <button class="btn-primary" onclick="lookupStudentId()" style="white-space:nowrap;">ค้นหาข้อมูล</button>
+        </div>
+
+        <div class="student-preview-box">
+          <div id="lookupResultText" style="font-size:13px; font-weight:600; color:#64748b;">
+            กรอกรหัสนักเรียนด้านบนเพื่อดึง ชื่อ-นามสกุล และห้องเรียนอัตโนมัติ
+          </div>
+          <div class="preview-row">
+            <div>
+              <label style="font-size:12px; color:#64748b;">ชื่อ-นามสกุล (คอลัมน์ B):</label>
+              <input type="text" id="regNameInput" placeholder="ชื่อ-นามสกุล">
+            </div>
+            <div>
+              <label style="font-size:12px; color:#64748b;">ห้องเรียน (คอลัมน์ C):</label>
+              <input type="text" id="regRoomInput" placeholder="เช่น ม.1/1">
+            </div>
+          </div>
+        </div>
+
+        <button id="regSaveBtn" class="btn-warning" onclick="captureAndRegister()" style="width:100%; padding:12px; font-size:15px; font-weight:600;">
+          2. ถ่ายรูปใบหน้าและบันทึกลงระบบทันที
+        </button>
+      </div>
+
+      <!-- กล่องที่ 2: เลือกห้องเรียนเพื่อเริ่มสแกนเช็คชื่อ -->
+      <div class="card">
+        <div class="card-title">
+          <span>ควบคุมการเช็คชื่อประจำคาบเรียน</span>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <select id="classroomSelect" style="flex:1;">
+            <option value="">-- กำลังโหลดรายชื่อห้องเรียน --</option>
+          </select>
+          <button id="startScanBtn" class="btn-primary" onclick="startClassroomSession()" disabled style="white-space:nowrap;">
+            เริ่มสแกนห้องนี้
+          </button>
+        </div>
+      </div>
+
+      <!-- กล่องที่ 3: รายชื่อนักเรียนที่สแกนผ่านในคาบนี้ -->
+      <div class="card">
+        <div class="card-title">
+          <span>รายชื่อที่เช็คชื่อสำเร็จในคาบนี้</span>
+          <span id="checkedCountBadge" class="count-badge">0 คน</span>
+        </div>
+        <div id="logList" class="log-list">
+          <div style="text-align:center; color:#94a3b8; padding:30px 0; font-size:14px;">
+            ยังไม่มีรายการเช็คชื่อในคาบนี้
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Canvas ซ่อนสำหรับแคปเจอร์ภาพนิ่ง -->
+  <canvas id="snapshotCanvas" width="640" height="480" style="display:none;"></canvas>
+
+<script>
+  // =========================================================================
+  // ส่วนตั้งค่าพารามิเตอร์หลัก (แก้ไขลิงก์ Web App URL ของคุณที่นี่)
+  // =========================================================================
+  
+  // 1. นำลิงก์ Web App URL (ที่ได้จากการกด Deploy ใน Google Apps Script และลงท้ายด้วย /exec) มาใส่ในเครื่องหมายคำพูดด้านล่างนี้:
+  const DEFAULT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycby5dnUf0z8zmCUDCEO3cqjKMMSTbmQq1vkvX0jUuIEWiaX-rLcM9hW-PQQDS9WqwSuFZw/exec';
+
+  // 2. รหัส PIN สำหรับคุณครูเพื่อเปิดโหมดถ่ายรูปลงทะเบียน
+  const TEACHER_PIN = '12345678';
+
+  // 3. พารามิเตอร์กล้องและ AI
+  const VIDEO_WIDTH = 640;
+  const VIDEO_HEIGHT = 480;
+  const MATCH_THRESHOLD = 0.45;    // เกณฑ์ตัดสินใบหน้า (0.40 - 0.50)
+  const SCAN_INTERVAL_MS = 500;    // สแกนทุกๆ 0.5 วินาที
+  const IMAGE_QUALITY = 0.85;      // ความคมชัดของรูปที่แคปเจอร์ (85%)
+  const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+
+  // =========================================================================
+  // ตัวแปรควบคุมการทำงานภายในระบบ
+  // =========================================================================
+  let activeApiUrl = localStorage.getItem('GAS_WEB_APP_URL') || DEFAULT_WEB_APP_URL;
+  let isModelLoaded = false;
+  let isCameraActive = false;
+  let verifiedPin = '';
+  let faceMatcher = null;
+  let studentMap = {};
+  let checkedInSet = new Set();
+  let isProcessingCheckIn = false;
+  let scanTimer = null;
+  let currentStream = null;
+
+  /**
+   * ฟังก์ชันส่งข้อมูลเชื่อมต่อกับ Google Apps Script (Code.gs)
+   */
+  function callBackend(action, payload, onSuccess, onFailure) {
+    if (window.google && window.google.script && window.google.script.run) {
+      window.google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onFailure || ((err) => showError(err.message)))[action](payload);
+    } else if (activeApiUrl && activeApiUrl.startsWith('https://script.google.com/')) {
+      fetch(activeApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: action, payload: payload }),
+        redirect: 'follow'
+      })
+        .then(res => res.json())
+        .then(data => onSuccess(data))
+        .catch(err => {
+          if (onFailure) onFailure(err);
+          else showError('เชื่อมต่อฐานข้อมูลไม่สำเร็จ กรุณาตรวจสอบลิงก์ /exec: ' + err.message);
+        });
+    } else {
+      showError('ยังไม่ได้ตั้งค่าลิงก์เชื่อมต่อฐานข้อมูล กรุณากดปุ่ม "ตั้งค่าลิงก์เชื่อมต่อ" มุมขวาบนเพื่อวางลิงก์ /exec ครับ');
+    }
+  }
+
+  /**
+   * ตั้งค่าลิงก์ Web App URL ผ่านปุ่มมุมขวาบน (กรณีไม่ได้ใส่ไว้ในโค้ดโดยตรง)
+   */
+  function promptApiUrl() {
+    const url = prompt('กรุณาวางลิงก์ Web App URL (ที่ลงท้ายด้วย /exec):', activeApiUrl);
+    if (url && url.trim().endsWith('/exec')) {
+      activeApiUrl = url.trim();
+      localStorage.setItem('GAS_WEB_APP_URL', activeApiUrl);
+      hideError();
+      updateStatus('บันทึกลิงก์เชื่อมต่อสำเร็จ! กำลังโหลดรายชื่อห้องเรียน...');
+      loadClassroomsDropdown();
+    } else if (url) {
+      alert('ลิงก์ไม่ถูกต้อง! ต้องใช้ลิงก์ที่ได้จากการกด Deploy และลงท้ายด้วย /exec เท่านั้นครับ');
+    }
+  }
+
+  // 1. เริ่มต้นเปิดกล้องและโหลดโมเดล AI
+  window.addEventListener('DOMContentLoaded', async () => {
+    await startWebcam();
+    await loadCameraDevicesList();
+
+    try {
+      await Promise.all([
+        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+      ]);
+      isModelLoaded = true;
+      updateStatus('ระบบ AI พร้อมทำงาน! กำลังดึงข้อมูลห้องเรียนจาก Google Sheets...');
+      loadClassroomsDropdown();
+    } catch (err) {
+      showError('โหลดโมเดล AI ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต: ' + err.message);
+    }
+  });
+
+  // 2. เปิดใช้งานกล้องเว็บแคม
+  async function startWebcam() {
+    const video = document.getElementById('video');
+    const selectedDeviceId = document.getElementById('cameraSelect').value;
+    hideError();
+
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
+    }
+
+    const videoConstraints = {
+      width: { ideal: VIDEO_WIDTH },
+      height: { ideal: VIDEO_HEIGHT }
+    };
+    if (selectedDeviceId) {
+      videoConstraints.deviceId = { exact: selectedDeviceId };
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints,
+        audio: false
+      });
+      currentStream = stream;
+      video.srcObject = stream;
+      await video.play();
+      isCameraActive = true;
+    } catch (err) {
+      isCameraActive = false;
+      showError(`ไม่สามารถเปิดกล้องได้ (${err.name}: ${err.message}) — เมื่อนำขึ้น GitHub Pages แล้ว กล้องจะเปิดได้ทันทีโดยไม่ติดบล็อกครับ`);
+    }
+  }
+
+  // 3. ปลดล็อกโหมดลงทะเบียนด้วยรหัส PIN 12345678
+  function unlockRegisterPanel() {
+    const card = document.getElementById('registerCard');
+    if (card.style.display === 'block') {
+      closeRegisterPanel();
+      return;
+    }
+
+    const inputPin = prompt('กรุณากรอกรหัส PIN สำหรับคุณครู:');
+    if (inputPin === null) return;
+
+    if (inputPin.trim() === TEACHER_PIN) {
+      verifiedPin = inputPin.trim();
+      card.style.display = 'block';
+      document.getElementById('regIdInput').focus();
+      updateStatus('เปิดโหมดลงทะเบียนสำเร็จ! พิมพ์รหัสนักเรียนแล้วกด Enter หรือกดปุ่มค้นหาได้เลยครับ');
+    } else {
+      alert('รหัส PIN ไม่ถูกต้อง!');
+    }
+  }
+
+  function closeRegisterPanel() {
+    document.getElementById('registerCard').style.display = 'none';
+  }
+
+  // 4. ฟังก์ชันใหม่: ค้นหาชื่อและห้องเรียนอัตโนมัติจากรหัสนักเรียน (คอลัมน์ A)
+  function lookupStudentId() {
+    const studentId = document.getElementById('regIdInput').value.trim();
+    if (!studentId) {
+      alert('กรุณากรอกรหัสนักเรียนก่อนกดค้นหาครับ');
+      return;
+    }
+
+    const resultText = document.getElementById('lookupResultText');
+    resultText.style.color = '#4f46e5';
+    resultText.textContent = `กำลังค้นหาข้อมูลรหัส ${studentId} จากชีท Students...`;
+
+    callBackend('getStudentById', studentId, (res) => {
+      if (res && res.found) {
+        document.getElementById('regNameInput').value = res.name;
+        document.getElementById('regRoomInput').value = res.classroom;
+        resultText.style.color = '#059669';
+        resultText.textContent = `พบข้อมูลนักเรียน: ${res.name} (ห้อง ${res.classroom}) — มองกล้องแล้วกดปุ่มถ่ายรูปด้านล่างได้เลย!`;
+        speakThai(`พบข้อมูลของ ${res.name} กรุณามองกล้องเพื่อถ่ายรูปค่ะ`);
+      } else {
+        document.getElementById('regNameInput').value = '';
+        resultText.style.color = '#d97706';
+        resultText.textContent = `ไม่พบรหัส ${studentId} ในชีท Students (คุณสามารถพิมพ์ชื่อและห้องเรียนด้านล่างเพื่อเพิ่มใหม่ได้ทันที)`;
+        document.getElementById('regNameInput').focus();
+      }
+    });
+  }
+
+  // 5. ถ่ายรูปใบหน้านักเรียนและบันทึกลง Google Drive
+  async function captureAndRegister() {
+    if (!isCameraActive) {
+      alert('กรุณาเปิดกล้องให้ทำงานก่อนถ่ายรูปครับ');
+      return;
+    }
+
+    const id = document.getElementById('regIdInput').value.trim();
+    const name = document.getElementById('regNameInput').value.trim();
+    const classroom = document.getElementById('regRoomInput').value.trim();
+
+    if (!id || !name || !classroom) {
+      alert('กรุณากดค้นหารหัสนักเรียน หรือตรวจสอบให้มีข้อมูล รหัส, ชื่อ-นามสกุล, และห้องเรียน ครบถ้วนก่อนกดถ่ายรูปครับ');
+      return;
+    }
+
+    const regBtn = document.getElementById('regSaveBtn');
+    regBtn.disabled = true;
+    hideError();
+    updateStatus('กำลังตรวจสอบความชัดเจนของใบหน้าด้วย AI...');
+
+    const video = document.getElementById('video');
+    const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
+    if (!detection) {
+      showError('AI ตรวจไม่พบใบหน้าในกล้อง! กรุณาให้นักเรียนมองตรงที่กล้องในที่มีแสงสว่างเพียงพอ แล้วกดถ่ายใหม่อีกครั้งครับ');
+      speakThai('ตรวจไม่พบใบหน้า กรุณามองตรงที่กล้องค่ะ');
+      regBtn.disabled = false;
+      return;
+    }
+
+    const snapCanvas = document.getElementById('snapshotCanvas');
+    const snapCtx = snapCanvas.getContext('2d');
+    snapCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
+    const photoBase64 = snapCanvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+
+    updateStatus(`กำลังบันทึกรูปภาพใบหน้าของ ${name} ลงใน Google Drive...`);
+
+    callBackend(
+      'registerStudent',
+      {
+        pin: verifiedPin,
+        id: id,
+        name: name,
+        classroom: classroom,
+        photoBase64: photoBase64
+      },
+      (res) => {
+        regBtn.disabled = false;
+        if (res.success) {
+          updateStatus(`บันทึกรูปใบหน้าสำเร็จ: ${name} (รหัส ${id}) ห้อง ${classroom}`);
+          speakThai(`บันทึกรูปของ ${name} เรียบร้อยค่ะ`);
+
+          addLogCard('ลงทะเบียนสำเร็จ', id, name, classroom);
+
+          // ล้างช่องรหัสและชื่อเพื่อเตรียมรับนักเรียนคนต่อไปทันที
+          document.getElementById('regIdInput').value = '';
+          document.getElementById('regNameInput').value = '';
+          document.getElementById('lookupResultText').style.color = '#64748b';
+          document.getElementById('lookupResultText').textContent = 'บันทึกสำเร็จ! กรอกรหัสนักเรียนคนต่อไปได้เลยครับ';
+          document.getElementById('regIdInput').focus();
+
+          loadClassroomsDropdown();
+        } else {
+          showError('เกิดข้อผิดพลาดในการลงทะเบียน: ' + res.message);
+        }
+      },
+      (err) => {
+        regBtn.disabled = false;
+        showError('บันทึกข้อมูลไม่สำเร็จ: ' + err.message);
+      }
+    );
+  }
+
+  // 6. โหลดรายการอุปกรณ์กล้อง
+  async function loadCameraDevicesList() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      const cameraSelect = document.getElementById('cameraSelect');
+      const currentVal = cameraSelect.value;
+
+      cameraSelect.innerHTML = '';
+      videoDevices.forEach((device, index) => {
+        const opt = document.createElement('option');
+        opt.value = device.deviceId;
+        opt.textContent = device.label || `กล้องตัวที่ ${index + 1}`;
+        cameraSelect.appendChild(opt);
+      });
+
+      if (currentVal) cameraSelect.value = currentVal;
+    } catch (e) {
+      console.warn('ไม่สามารถดึงรายชื่ออุปกรณ์กล้องได้:', e);
+    }
+  }
+
+  // 7. ดึงรายชื่อห้องเรียนจากแผ่นงาน Students
+  function loadClassroomsDropdown() {
+    callBackend('getClassrooms', null, (rooms) => {
+      const select = document.getElementById('classroomSelect');
+      const previousSelection = select.value;
+      select.innerHTML = '<option value="">-- เลือกห้องเรียนเพื่อเริ่มสแกน --</option>';
+      if (Array.isArray(rooms)) {
+        rooms.forEach(room => {
+          const opt = document.createElement('option');
+          opt.value = room;
+          opt.textContent = `ห้องเรียน ${room}`;
+          select.appendChild(opt);
+        });
+        if (previousSelection && rooms.includes(previousSelection)) {
+          select.value = previousSelection;
+        }
+      }
+      document.getElementById('startScanBtn').disabled = false;
+      updateStatus('ระบบพร้อมใช้งาน! เลือกห้องเรียนแล้วกด "เริ่มสแกนห้องนี้" หรือกดลงทะเบียนถ่ายรูปได้เลยครับ');
+    });
+  }
+
+  // 8. โหลดข้อมูลใบหน้านักเรียนประจำห้องและเริ่มสแกนเช็คชื่อ
+  async function startClassroomSession() {
+    if (!isCameraActive) {
+      alert('กรุณาเปิดกล้องให้ทำงานก่อนเริ่มสแกนครับ');
+      return;
+    }
+
+    const classroom = document.getElementById('classroomSelect').value;
+    if (!classroom) {
+      alert('กรุณาเลือกห้องเรียนก่อนครับ');
+      return;
+    }
+
+    hideError();
+    document.getElementById('startScanBtn').disabled = true;
+    checkedInSet.clear();
+    document.getElementById('checkedCountBadge').textContent = '0 คน';
+    document.getElementById('logList').innerHTML = '';
+    updateStatus(`กำลังโหลดข้อมูลใบหน้านักเรียนห้อง ${classroom} จาก Google Drive...`);
+
+    callBackend('getStudentsByClassroom', classroom, async (students) => {
+      if (!students || students.length === 0) {
+        showError(`ยังไม่มีรูปถ่ายของนักเรียนห้อง "${classroom}" ใน Google Drive! กรุณากดปุ่ม "+ โหมดลงทะเบียนถ่ายรูป (PIN)" ด้านบนเพื่อถ่ายรูปนักเรียนก่อนครับ`);
+        document.getElementById('startScanBtn').disabled = false;
+        return;
+      }
+
+      const labeledDescriptors = [];
+      studentMap = {};
+
+      for (const student of students) {
+        studentMap[student.id] = student;
+        try {
+          const img = await faceapi.fetchImage(student.imageBase64);
+          const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+          if (detection) {
+            labeledDescriptors.push(new faceapi.LabeledFaceDescriptors(student.id, [detection.descriptor]));
+          }
+        } catch (e) {
+          console.warn('ข้ามรูปของรหัส ' + student.id);
+        }
+      }
+
+      if (labeledDescriptors.length === 0) {
+        showError('ไม่สามารถอ่านใบหน้าจากรูปต้นฉบับได้ กรุณาถ่ายรูปลงทะเบียนใหม่อีกครั้งครับ');
+        document.getElementById('startScanBtn').disabled = false;
+        return;
+      }
+
+      faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, MATCH_THRESHOLD);
+      updateStatus(`กำลังเปิดสแกนเช็คชื่อห้อง ${classroom} (โหลดข้อมูลใบหน้าสำเร็จ ${labeledDescriptors.length} คน)`);
+      document.getElementById('startScanBtn').disabled = false;
+
+      if (scanTimer) clearInterval(scanTimer);
+      scanTimer = setInterval(detectFaceLoop, SCAN_INTERVAL_MS);
+    });
+  }
+
+  // 9. ลูปตรวจจับใบหน้าแบบเรียลไทม์
+  async function detectFaceLoop() {
+    if (!faceMatcher || !isCameraActive) return;
+
+    const video = document.getElementById('video');
+    const overlay = document.getElementById('overlay');
+    const displaySize = { width: VIDEO_WIDTH, height: VIDEO_HEIGHT };
+
+    const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
+    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    resizedDetections.forEach(detection => {
+      const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+      const box = detection.detection.box;
+
+      // คำนวณตำแหน่งกรอบสี่เหลี่ยมให้ตรงกับภาพที่กลับด้านซ้าย-ขวา (Mirror)
+      const mirroredBox = {
+        x: VIDEO_WIDTH - box.x - box.width,
+        y: box.y,
+        width: box.width,
+        height: box.height
+      };
+
+      let labelText = 'ไม่รู้จักใบหน้า';
+      let boxColor = '#ef4444';
+
+      if (bestMatch.label !== 'unknown') {
+        const student = studentMap[bestMatch.label];
+        labelText = `${student.name} (${student.id})`;
+        boxColor = '#10b981';
+
+        if (!checkedInSet.has(student.id) && !isProcessingCheckIn) {
+          handleStudentCheckIn(student);
+        }
+      }
+
+      const drawBox = new faceapi.draw.DrawBox(mirroredBox, {
+        label: labelText,
+        boxColor: boxColor
+      });
+      drawBox.draw(overlay);
+    });
+  }
+
+  // 10. บันทึกการเช็คชื่อ แคปเจอร์รูปหลักฐาน และส่งเสียงพูด
+  function handleStudentCheckIn(student) {
+    isProcessingCheckIn = true;
+    checkedInSet.add(student.id);
+
+    const video = document.getElementById('video');
+    const snapCanvas = document.getElementById('snapshotCanvas');
+    const snapCtx = snapCanvas.getContext('2d');
+    snapCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
+    const snapshotBase64 = snapCanvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+
+    speakThai(`สวัสดีค่ะ ${student.name} บันทึกเวลาเรียนเรียบร้อยค่ะ`);
+    updateStatus(`กำลังบันทึกเวลาเรียนของ ${student.name}...`);
+
+    callBackend(
+      'recordAttendance',
+      {
+        id: student.id,
+        name: student.name,
+        classroom: student.classroom,
+        snapshotBase64: snapshotBase64
+      },
+      (res) => {
+        isProcessingCheckIn = false;
+        if (res.success) {
+          updateStatus(`เช็คชื่อสำเร็จ: ${student.name} เวลา ${res.time}`);
+          document.getElementById('checkedCountBadge').textContent = `${checkedInSet.size} คน`;
+          addLogCard(res.time, student.id, student.name, student.classroom);
+        } else {
+          checkedInSet.delete(student.id);
+          showError(`บันทึกข้อมูลไม่สำเร็จ: ${res.message}`);
+        }
+      },
+      (err) => {
+        isProcessingCheckIn = false;
+        checkedInSet.delete(student.id);
+        showError(`เกิดข้อผิดพลาดในการบันทึก: ${err.message}`);
+      }
+    );
+  }
+
+  function addLogCard(timeText, id, name, classroom) {
+    const logList = document.getElementById('logList');
+    if (checkedInSet.size <= 1 && logList.innerText.includes('ยังไม่มีรายการ')) {
+      logList.innerHTML = '';
+    }
+    const card = document.createElement('div');
+    card.className = 'log-card';
+    card.innerHTML = `
+      <div>
+        <strong>${name}</strong> <span style="color:#64748b;">(รหัส ${id} • ห้อง ${classroom})</span>
+      </div>
+      <span class="log-time">${timeText}</span>
+    `;
+    logList.prepend(card);
+  }
+
+  function speakThai(text) {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'th-TH';
+      utterance.rate = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+
+  function updateStatus(msg) {
+    document.getElementById('statusBanner').textContent = msg;
+  }
+
+  function showError(msg) {
+    const errBox = document.getElementById('errorBanner');
+    errBox.style.display = 'block';
+    errBox.innerText = msg;
+  }
+
+  function hideError() {
+    const errBox = document.getElementById('errorBanner');
+    errBox.style.display = 'none';
+    errBox.textContent = '';
+  }
+</script>
+
+</body>
+</html>
