@@ -500,7 +500,7 @@
         document.getElementById('regRoomInput').value = res.classroom;
         resultText.style.color = '#059669';
         resultText.textContent = `พบข้อมูลนักเรียน: ${res.name} (ห้อง ${res.classroom}) — มองกล้องแล้วกดปุ่มถ่ายรูปด้านล่างได้เลย!`;
-        speakThai(`พบข้อมูลของ ${res.name} กรุณามองกล้องเพื่อถ่ายรูปค่ะ`);
+        speakThai(`พบข้อมูลของ ${res.name} กรุณามองกล้องเพื่อถ่ายรูปครับ`);
       } else {
         document.getElementById('regNameInput').value = '';
         resultText.style.color = '#d97706';
@@ -535,7 +535,7 @@
     const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
     if (!detection) {
       showError('AI ตรวจไม่พบใบหน้าในกล้อง! กรุณาให้นักเรียนมองตรงที่กล้องในที่มีแสงสว่างเพียงพอ แล้วกดถ่ายใหม่อีกครั้งครับ');
-      speakThai('ตรวจไม่พบใบหน้า กรุณามองตรงที่กล้องค่ะ');
+      speakThai('ตรวจไม่พบใบหน้า กรุณามองตรงที่กล้องครับ');
       regBtn.disabled = false;
       return;
     }
@@ -560,7 +560,7 @@
         regBtn.disabled = false;
         if (res.success) {
           updateStatus(`บันทึกรูปใบหน้าสำเร็จ: ${name} (รหัส ${id}) ห้อง ${classroom}`);
-          speakThai(`บันทึกรูปของ ${name} เรียบร้อยค่ะ`);
+          speakThai(`บันทึกรูปของ ${name} เรียบร้อยครับ`);
 
           addLogCard('ลงทะเบียนสำเร็จ', id, name, classroom);
 
@@ -743,7 +743,7 @@
     snapCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
     const snapshotBase64 = snapCanvas.toDataURL('image/jpeg', IMAGE_QUALITY);
 
-    speakThai(`สวัสดีค่ะ ${student.name} บันทึกเวลาเรียนเรียบร้อยค่ะ`);
+    speakThai(`สวัสดีครับ ${student.name} บันทึกเวลาเรียนเรียบร้อยครับ`);
     updateStatus(`กำลังบันทึกเวลาเรียนของ ${student.name}...`);
 
     callBackend(
